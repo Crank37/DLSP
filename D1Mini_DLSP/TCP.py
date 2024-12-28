@@ -76,7 +76,7 @@ class TCPClient(object):
     def message_timer(self, sampletime, mode = 1):
         """
         
-        sampletime in ms und mode 0 (127) oder 1 (255) Werte (je beschlunigungsachse) in einem Datenpaket zum versenden
+        sampletime in ms und mode 0 (128) oder 1 (256) Werte (je beschlunigungsachse) in einem Datenpaket zum versenden
         
         """
 
@@ -109,7 +109,7 @@ class TCPClient(object):
         #Ende des Timers
         end = time.ticks_ms()
         elapsed = time.ticks_diff(end, start)
-        print(self.iter)
+        print(elapsed)
     
     #---------------------------------------------- Datenstrukturierung ------------------------------------------------------
 
@@ -143,9 +143,7 @@ class TCPClient(object):
             total_samples = self.limit
             self.client_socket.send(struct.pack('I', total_samples))  # Gesamtlänge der Daten senden
 
-            print(self.__accel_x)
-
-            for i, (x, y, z) in enumerate(combined_data): #0 bis 127
+            for i, (x, y, z) in enumerate(combined_data): #0 bis i
                 # Packe jedes Tripel von Floats in Binärdaten
                 packed_data += struct.pack('fff', x, y, z)
 

@@ -1,5 +1,6 @@
 import socket
 import struct
+import certifi
 
 from pymongo import MongoClient
 
@@ -13,16 +14,21 @@ class TCPServer_MDB(object):
     
     """
     #Initialisierung Attribute
-    def __init__(self, host = "127.0.0.1", port = 65432, MDB_clientaddr_port = "localhost:27017"):
+    def __init__(self, host = "127.0.0.1", port = 65432):
         self.host = host
         self.port = port
-        self.client = MongoClient(MDB_clientaddr_port)
+        
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
+        
         #Beschleunigungswerte
         self.__ax = []
         self.__ay = []
         self.__az = []
+
+        #Antrainieren des Modells
+        self.label = ""
+
+
 
     #---------------------------------------------- Server Start,Stopp ------------------------------------------------------
        
@@ -68,10 +74,7 @@ class TCPServer_MDB(object):
                     self.__ay.append(floats[i + 1])
                     self.__az.append(floats[i + 2])
                 
-                print(self.__ax)
-
-
-            if iter > 3:
+            if iter > 10:
                 print("Verbindung geschlossen")
                 break
             print(f"Daten Nr. {iter} empfangen")
@@ -109,93 +112,30 @@ class TCPServer_MDB(object):
     #---------------------------------------------- Laden Daten in Mongo DB ------------------------------------------------------
 
     #DB Instanz erstellen oder aufrufen
-    def create_opendb(self, dbinstance = "Acceleration"):
-        self.db_acc = self.client[dbinstance]
-        print(f"DB instance ({dbinstance}) created!")
+    def create_opendb(self, dbinstance = "Acceleration",MDB_clientaddr_port = "localhost:27017", MDB_cloud_addr = "", cloud = 0, labeling = ""):
+        self.cloud = cloud
+        self.MD_local = MongoClient(MDB_clientaddr_port)
+        self.db_local = self.MD_local[dbinstance]
+        self.label = labeling
+
+        #Erzeugung Verbindung zum Cloud
+        if self.cloud == 1:
+            self.MD_Cloud = MongoClient(MDB_cloud_addr, tlsCAFile=certifi.where())
+            self.db_cloud = self.MD_Cloud[dbinstance]
+
+        print(f"DB Instanz ({dbinstance}) erstellt!")
     
     #Daten in die DB packen und zurücksetzen
     def getindb(self):
         #Packt jedes Element rein als Dictionary
-        array = [{'ax': self.__ax, 'ay': self.__ay, 'az': self.__az}]
+        array = [{'ax': self.__ax, 'ay': self.__ay, 'az': self.__az, "label":self.label}]
 
-        self.db_acc.Accelerations.insert_many(array)
+        self.db_local.Accelerations.insert_many(array)
+        
+        if self.cloud == 1:
+            self.db_cloud.Accelerations.insert_many(array)
 
         #arrays leeren
         self.__ax.clear()
         self.__ay.clear()
         self.__az.clear()
-
-
-
-    
-
-
-
-
-
-
-"""import socket
-
-TCP_IP = '192.168.2.81'
-TCP_PORT = 12345
-BUFFER_SIZE = 20480
-
-def concDataSet(data_string):
-    ax = []
-    ay = []
-    az = []
-
-    for chunk in data_string:
-        #Splitten des ankommenden Datensatzes (256 DAten gesplittet)
-        data_set = chunk.split('\n')
-        # print(data_set)
-
-        for nr_data in data_set:
-            #Splitten je Datensatz alle drei Beschleunigungskomponenten (getrennt mit Komma)
-            all_data = nr_data.split(',')
-            # print(all_data)
-
-            #Alle einzelnen Elemente in die Liste gepackt
-            lengthdata = len(all_data)
-            if lengthdata > 0:
-                if len(all_data[0]) > 1:
-                    ax.append(float(all_data[0]))
-            if lengthdata > 1:
-                if len(all_data[1]) > 1:
-                    ay.append(float(all_data[1]))
-            if lengthdata > 2:
-                if len(all_data[2]) > 1:
-                    az.append(float(all_data[2]))
-    return ax, ay, az
-
-
-
-
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind((TCP_IP, TCP_PORT))
-print("Waiting for Connection...")
-s.listen(1)
-
-data_string = []
-conn, addr = s.accept()
-print('Connection address:', addr)
-
-
-while 1:
-    data = conn.recv(BUFFER_SIZE)
-    if not data:
-        break
-    data_string.append(data.decode()) #Daten in array überführen
-
-    ax_single, ay_single, az_single = concDataSet(data_string)
-
-    for value in ax_single:
-        ax_data.append(value)
-    for value in ay_single:
-        ay_data.append(value)
-    for value in az_single:
-        az_data.append(value)
-
-    print(data_string)
-
-conn.close()"""
