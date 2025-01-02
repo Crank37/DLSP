@@ -1,6 +1,7 @@
 import socket
 import struct
 import certifi
+import threading
 
 from pymongo import MongoClient
 
@@ -28,95 +29,103 @@ class TCPServer_MDB(object):
         #Antrainieren des Modells
         self.label = ""
 
+        #Zeitkonstante an Client
+        self.sampletime = ""
+
 
 
     #---------------------------------------------- Server Start,Stopp ------------------------------------------------------
        
 
-    def start(self):
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen()
-        conn, addr = self.server_socket.accept() #blockiert weiteren Code, bis Client eine Verbindung mit server hergesetllt hat
-        with conn:
-            print(f"Verbunden mit der Adresse: {addr}")
-            self.receivedata(conn)
+    def start(self, label, time):
+        """Startet den TCP-Server in einem separaten Thread."""
+        self.running = True
+        self.label = label      #nur für manuelle Datenaufnahme
+        self.sampletime = time
+
+        #self.set_time() #Zeit senden
+
+        #Receivedata Funktion im zusätzlichen Thread ausführen, sodass die Benutzeroberfläche parallel funktioniert
+        thread = threading.Thread(target=self.receivedata, daemon=True)
+        thread.start()
 
     def stop(self):
-        self.server_socket.close()
+        """Stoppt den Server."""
+        self.running = False
+        if self.server_socket:
+            self.server_socket.close()
         print("Verbindung geschlossen!")
+
+    #---------------------------------------------- Nachricht an Client ------------------------------------------------------
+
+    def set_time(self):
+        self.server_socket.connect((self.host, self.port))
+        self.server_socket.send(self.sampletime.encode())
+
 
     #---------------------------------------------- Daten aufbereiten ------------------------------------------------------
 
-    #Daten Erhalten
-    def receivedata(self, conn):
+    #Daten Empfangen vom Client
+    def receivedata(self):
+        #Verbindung herstellen
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen()
+
+        #Daten
         iter = 0
-        while True:
+        while self.running:
+            conn, addr = self.server_socket.accept() #blockiert weiteren Code, bis Client eine Verbindung mit server hergesetllt hat
             
-            # Gesamtlänge der Daten empfangen
-            total_samples = struct.unpack('I', conn.recv(4))[0]
+            with conn:
+                print(f"Verbunden mit der Adresse: {addr}")
+                while self.running:
 
-            # Daten in Chunks empfangen
-            while len(self.__ax) < total_samples:
-                # Länge des nächsten Chunks empfangen
-                chunk_size = struct.unpack('I', conn.recv(4))[0]
-                # Sicherstellen, dass der vollständige Chunk empfangen wird
-                chunk_data = b''
-                while len(chunk_data) < chunk_size:
-                    chunk_data += conn.recv(chunk_size - len(chunk_data))
-                print(f"Length chunk data: {len(chunk_data)}")
+                    ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
 
-                # Entpacke die Float-Daten
-                floats = struct.unpack(f'{chunk_size // 4}f', chunk_data)
+                    try:
+                        # Gesamtlänge der Daten empfangen
+                        total_samples = struct.unpack('I', conn.recv(4))[0]
 
-                # Verteile die Daten auf die drei Listen
-                for i in range(0, len(floats), 3):
-                    self.__ax.append(floats[i])
-                    self.__ay.append(floats[i + 1])
-                    self.__az.append(floats[i + 2])
-                
-            if iter > 10:
-                print("Verbindung geschlossen")
-                break
-            print(f"Daten Nr. {iter} empfangen")
+                        # Daten in Chunks empfangen
+                        while len(self.__ax) < total_samples:
+                            # Länge des nächsten Chunks empfangen
+                            chunk_size = struct.unpack('I', conn.recv(4))[0]
+                            # Sicherstellen, dass der vollständige Chunk empfangen wird
+                            chunk_data = b''
+                            while len(chunk_data) < chunk_size:
+                                chunk_data += conn.recv(chunk_size - len(chunk_data))
+                            print(f"Größe Empfangenen Teildaten: {len(chunk_data)}")
 
-            self.getindb()
+                            # Entpacke die Float-Daten
+                            floats = struct.unpack(f'{chunk_size // 4}f', chunk_data)
 
-            iter += 1
+                            # Verteile die Daten auf die drei Listen
+                            for i in range(0, len(floats), 3):
+                                self.__ax.append(floats[i])
+                                self.__ay.append(floats[i + 1])
+                                self.__az.append(floats[i + 2])
+                            
+                        if iter > 10:
+                            print("Verbindung geschlossen")
+                            self.running = False
+                            break
+                        print(f"Daten Nr. {iter} empfangen")
 
-    #Beschleunigungswerte ins array packen
-    def _getinarray(self, data):
-            
-        """     for chunk in data:
-                    #Splitten des ankommenden Datensatzes (256 DAten gesplittet)
-                    data_set = chunk.split('\n')
-                    # print(data_set)
+                        self.getindb()
 
-                    for nr_data in data_set:
-                        #Splitten je Datensatz alle drei Beschleunigungskomponenten in ein Array gespeichert['El1','El2' ...]
-                        all_data = nr_data.split(',')
+                        iter += 1
 
-                        #Alle einzelnen Elemente in die Liste gepackt 
-                        lengthdata = len(all_data)
-                        if lengthdata > 0:
-                            if len(all_data[0]) > 1:
-                                self.__ax.append(float(all_data[0]))
-                        if lengthdata > 1:
-                            if len(all_data[1]) > 1:
-                                self.__ay.append(float(all_data[1]))
-                        if lengthdata > 2:
-                            if len(all_data[2]) > 1:
-                                self.__az.append(float(all_data[2]))"""
-        
-
+                    except (ConnectionResetError, BrokenPipeError):
+                        print("Verbindung verloren")
+                        break
 
     #---------------------------------------------- Laden Daten in Mongo DB ------------------------------------------------------
 
     #DB Instanz erstellen oder aufrufen
-    def create_opendb(self, dbinstance = "Acceleration",MDB_clientaddr_port = "localhost:27017", MDB_cloud_addr = "", cloud = 0, labeling = ""):
+    def create_opendb(self, dbinstance = "Acceleration",MDB_clientaddr_port = "localhost:27017", MDB_cloud_addr = "", cloud = 0):
         self.cloud = cloud
         self.MD_local = MongoClient(MDB_clientaddr_port)
         self.db_local = self.MD_local[dbinstance]
-        self.label = labeling
 
         #Erzeugung Verbindung zum Cloud
         if self.cloud == 1:
@@ -139,3 +148,5 @@ class TCPServer_MDB(object):
         self.__ax.clear()
         self.__ay.clear()
         self.__az.clear()
+
+    #---------------------------------------------- Debugging ------------------------------------------------------

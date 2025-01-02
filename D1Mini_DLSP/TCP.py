@@ -36,6 +36,7 @@ class TCPClient(object):
 
         #Timer
         self.tim = Timer(-1)
+        self.sampletime = 0
 
         #TCP Socket
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -111,6 +112,32 @@ class TCPClient(object):
         elapsed = time.ticks_diff(end, start)
         print(elapsed)
     
+    #Empfangen vom Server
+    def get_time(self):
+        print("1-------------------------------")
+        self.client_socket.bind((self.host, self.port))
+        print("2")
+        self.client_socket.listen()
+        print("3")
+
+        while True:
+            conn, addr = self.client_socket.accept()
+            with conn:
+                try:
+                    self.sampletime = conn.recv()
+                except:
+                    self.sampletime = 10
+                    print("Zeitintervall wurde auf 10ms gesetzt")
+                
+                break
+
+        #falls nichts weitergegeben wurde
+        if self.sampletime == "":
+            self.sampletime = 10
+
+        print(f'Zeit auf {self.sampletime} ms gesetzt!')
+
+
     #---------------------------------------------- Datenstrukturierung ------------------------------------------------------
 
     #Datenpaket zusammenpacken in ein String
