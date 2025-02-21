@@ -11,7 +11,7 @@ from pymongo import MongoClient
 class TCPServer_MDB(object):
     """
     
-    Erzeugung einer Istanz ffür ein TCP Server und ein Mongo DB Client
+    Erzeugung einer Istanz für ein TCP Server und ein Mongo DB Client
     
     """
     #Initialisierung Attribute
@@ -19,13 +19,14 @@ class TCPServer_MDB(object):
         self.host = host
         self.port = port
         
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
         #Beschleunigungswerte
         self.__ax = []
         self.__ay = []
         self.__az = []
         self.__timestamp = []
+
+        #Status innerhalb Benutzeroberfläche updaten
+        self._Statustext = "Willkommen! \nWählen Sie eine Aktion aus!"
 
         #Antrainieren des Modells
         self.label = ""
@@ -40,6 +41,8 @@ class TCPServer_MDB(object):
 
     def start(self, label, time):
         """Startet den TCP-Server in einem separaten Thread."""
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
         self.running = True
         self.label = label      #nur für manuelle Datenaufnahme
         self.sampletime = time
@@ -53,6 +56,7 @@ class TCPServer_MDB(object):
         self.running = False
         if self.server_socket:
             self.server_socket.close()
+        self._Statustext = "Verbindung geschlossen!"
         print("Verbindung geschlossen!")
 
     #---------------------------------------------- Nachricht an Client ------------------------------------------------------
@@ -71,6 +75,8 @@ class TCPServer_MDB(object):
 
     def receivedata(self):
             
+            self._Statustext = "Verbindung wird hergestellt ..."
+
             #Verbindung herstellen
             self.server_socket.bind((self.host, self.port))
             self.server_socket.listen()
@@ -79,15 +85,17 @@ class TCPServer_MDB(object):
             iter = 0
             while self.running:
                 conn, addr = self.server_socket.accept() #blockiert weiteren Code, bis Client eine Verbindung mit server hergesetllt hat
-                
+
                 with conn:
-                    print(f"Verbunden mit der Adresse: {addr}")
+                    print(f"Verbunden mit der Adresse: {addr[0]}")
                     self.set_time(conn) #Zeit senden
                     while self.running:
 
                         ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
 
                         try:
+                            self._Statustext = f"Verbunden mit: {addr[0]}\nEmpfangene Datenpakete {iter}"
+
                             # Gesamtlänge der Daten empfangen
                             total_samples = struct.unpack('I', conn.recv(4))[0]
 
@@ -218,4 +226,9 @@ class TCPServer_MDB(object):
         print("Durch")
 
 
-    #---------------------------------------------- Debugging ------------------------------------------------------
+    #---------------------------------------------- getter ------------------------------------------------------
+
+
+    def get_statustext(self):
+        """Getter-Methode für Statustext"""
+        return self._Statustext

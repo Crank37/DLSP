@@ -1,8 +1,9 @@
 import sys
-from PySide6.QtCore import Signal, QObject
+from PySide6.QtCore import Signal, QObject, QTimer
 from PySide6 import  QtWidgets
 from GUI_from_Designer import Ui_MainWindow
 from TCP import TCPServer_MDB
+from Simulation import Simulation
 import urllib 
 
 #Zustände
@@ -32,21 +33,40 @@ class ServerController(QObject):
     # Signal zur Kommunikation mit der GUI
     message_received = Signal(str)
 
-    def __init__(self, host, port, cloud, dbcloudurl, dbinstance):
+    def __init__(self, host, port, cloud, dbcloudurl, dbinstance, MLModelname):
         super().__init__()
 
+        #Variable zum Umschalten Textfeld zwischen TCP und Simulation
+        self.TCPActive = False
+
         self.server = TCPServer_MDB(host, port)
+
+        #Simulation mit Klassifikiation
+        self.sim = Simulation(MLModelname, dbcloudurl, dbinstance)
 
         #Verbindung zu Mongo DB herstellen und Datenbank erzeugen 
         self.server.create_opendb(dbinstance, MDB_clientaddr_port="localhost:27017", MDB_cloud_addr=dbcloudurl, cloud=cloud)
 
+    def Status_Updater(self):
+        #Bestimmung, ob Textfeld durch Simulation oder TCP Server ersetzt werden soll
+        if self.TCPActive:
+            text = self.server.get_statustext()
+        else:
+            text = self.sim.get_statustext()
+        return str(text)
 
     def Receive_data(self, label: str, time: str):
+        self.TCPActive = True
         #TCP Server starten
         self.server.start(label=label, time=time)
+
+    def start_sim(self):
+        self.sim.start()
         
     def stop_server(self):
+        self.TCPActive = False
         self.server.stop()
+
 
 #Benutzeroberfläche (Layout in Ui_MainWindow, erstellt mit Qt Designer)
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -59,6 +79,17 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.bRecData.clicked.connect(lambda: self.server_controller.Receive_data(self.tLabel.text(), str(self.tSampletime.text())))
 
         self.bStop.clicked.connect(lambda: self.server_controller.stop_server())
+
+        self.bSim.clicked.connect(lambda: self.server_controller.start_sim())
+
+        # Timer zur regelmäßigen Aktualisierung des Status
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_status)
+        self.timer.start(500)  
+
+    def update_status(self):
+        """Aktualisiert den Status-Text regelmäßig"""
+        self.StatusText.setText(self.server_controller.Status_Updater())
 
 
 
@@ -73,7 +104,7 @@ if __name__ == "__main__":
     password = urllib.parse.quote_plus('mongo')
     srv_url = f'mongodb+srv://{username}:{password}@cluster21045.2xlz5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster21045' 
 
-    serverController = ServerController(host = "192.168.2.101", port = 53565, cloud=1, dbcloudurl=srv_url, dbinstance = "Messung21_02")
+    serverController = ServerController(host = "192.168.2.101", port = 53565, cloud=0, dbcloudurl=srv_url, dbinstance = "Messung2", MLModelname="Decision Tree_model.pkl")
 
     #Benutzeroberfläche starten
     window = MainWindow(serverController)
