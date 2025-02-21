@@ -1,9 +1,10 @@
 from machine import Timer
 from machine import I2C
 from machine import Pin
+from machine import RTC
+import ntptime
 
 import network
-import gc
 import struct
 
 import time
@@ -31,12 +32,15 @@ class TCPClient(object):
         self.__accel_x = []
         self.__accel_y = []
         self.__accel_z = []
-        self.__datastring = ''
+        self.__timestamps = []
         self.iter = 0
+
+        # Echtzeituhr im Mikrocontroller initialisieren
+        self.rtc = RTC()
 
         #Timer
         self.tim = Timer(-1)
-        self.sampletime = 0
+        self.sampletime = 10 #ms
 
         #TCP Socket
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -74,7 +78,7 @@ class TCPClient(object):
     #---------------------------------------------- Nachricht ------------------------------------------------------
 
     #periodisches Triggern nachricht
-    def message_timer(self, sampletime, mode = 1):
+    def message_timer(self, mode = 1):
         """
         
         sampletime in ms und mode 0 (128) oder 1 (256) Werte (je beschlunigungsachse) in einem Datenpaket zum versenden
@@ -93,7 +97,7 @@ class TCPClient(object):
             self.limit = 256
 
         if self.connected:
-            self.tim.init(mode=Timer.PERIODIC, period = sampletime, callback=self.send_message)
+            self.tim.init(mode=Timer.PERIODIC, period = self.sampletime, callback=self.send_message)
             
     #Nachricht senden
     def send_message(self, t):
@@ -102,7 +106,7 @@ class TCPClient(object):
 
         if self.connected:
             try:
-                self.data_int()
+                self.data_struct_send()
             except OSError as e:
                 print(f"Communication failed: {e}")
                 self.close()
@@ -114,70 +118,76 @@ class TCPClient(object):
     
     #Empfangen vom Server
     def get_time(self):
-        print("1-------------------------------")
-        self.client_socket.bind((self.host, self.port))
-        print("2")
-        self.client_socket.listen()
-        print("3")
-
-        while True:
-            conn, addr = self.client_socket.accept()
-            with conn:
-                try:
-                    self.sampletime = conn.recv()
-                except:
-                    self.sampletime = 10
-                    print("Zeitintervall wurde auf 10ms gesetzt")
-                
-                break
-
-        #falls nichts weitergegeben wurde
-        if self.sampletime == "":
-            self.sampletime = 10
-
+        self.sampletime = int(self.client_socket.recv(256).decode())
         print(f'Zeit auf {self.sampletime} ms gesetzt!')
 
 
     #---------------------------------------------- Datenstrukturierung ------------------------------------------------------
 
-    #Datenpaket zusammenpacken in ein String
-    def data_string(self):
+    def data_struct_send(self):
+
+            if self.iter >= self.limit:
+                chunk_size = self.limit / 4
+                packed_data = b''
+                print(f"Länge der Listen x {len(self.__accel_x)}, y {len(self.__accel_y)}, z{len(self.__accel_z)} ")
+                combined_data = zip(self.__accel_x, self.__accel_y, self.__accel_z)
+
+                # Gesamtlänge der Daten
+                total_samples = self.limit
+                self.client_socket.send(struct.pack('I', total_samples))  # Gesamtlänge der Daten senden
+
+                for i, (x, y, z) in enumerate(combined_data): #0 bis i
+                    # Packe jedes Tripel von Floats in Binärdaten
+                    packed_data += struct.pack('fff', x, y, z)
+
+                    # Sende, wenn ein Chunk voll ist oder die Daten vollständig sind
+                    if (i + 1) % chunk_size == 0 or (i + 1) == total_samples: 
+                        # Länge des gepackten Chunks senden
+                        self.client_socket.send(struct.pack('I', len(packed_data)))
+                        # Chunk-Daten senden
+                        self.client_socket.sendall(packed_data)  
+                        print(f"gesendet Länge : {len(packed_data)}")
+
+                        packed_data = b''
+
+                self.iter = 0
+                self.__accel_x.clear()
+                self.__accel_y.clear()
+                self.__accel_z.clear()
+            
+            self.__accel_x.append(self.accel.x)
+            self.__accel_y.append(self.accel.y)
+            self.__accel_z.append(self.accel.z)
+
+            self.iter += 1
+
+    #noch nicht funktionsfähig
+    def data_int_test(self):
+        """Datenpakete werden strukturiert verschickt (Informationen an den Codekommentaren bzw aus Dokumentation entnehmen!)"""
+
+        #If-Block zum Senden, falls Array voll
         if self.iter >= self.limit:
-            self.client_socket.sendall(self.__datastring.encode())
-            self.__datastring.clear()
-            self.iter = 0
 
-        before = gc.mem_free()
-        self.__datastring += '{0:3.5f},{1:3.5f},{2:3.5f}\n'.format(self.accel.x,self.accel.y,self.accel.z)
-        after = gc.mem_free()
-
-        # Speicherverbrauch berechnen
-        used_memory = before - after
-        print(f"Speicherverbrauch der Variable: {used_memory} Bytes")
-
-        self.iter += 1
+            print(f"AX {self.__accel_x[:5]} \n AY {self.__accel_y[:5]} \n AZ {self.__accel_z[:5]} \n time {self.__timestamps[:10]}")
 
 
-    def data_int(self):
-
-        if self.iter >= self.limit:
-            chunk_size = self.limit / 4
+            chunk_size = self.limit // 4
             packed_data = b''
-            print(f"Länge der Listen x {len(self.__accel_x)}, y {len(self.__accel_y)}, z{len(self.__accel_z)} ")
-            combined_data = zip(self.__accel_x, self.__accel_y, self.__accel_z)
+            print(f"Länge der Listen x {len(self.__accel_x)}, y {len(self.__accel_y)}, z{len(self.__accel_z)}, Zeit{len(self.__timestamps)} ")
+            combined_data = zip(self.__accel_x, self.__accel_y, self.__accel_z, self.__timestamps)
 
             # Gesamtlänge der Daten
             total_samples = self.limit
-            self.client_socket.send(struct.pack('I', total_samples))  # Gesamtlänge der Daten senden
+            self.client_socket.send(struct.pack('<I', total_samples))  # Gesamtlänge der Daten senden
 
-            for i, (x, y, z) in enumerate(combined_data): #0 bis i
+            for i, (x, y, z, tstamp) in enumerate(combined_data): #0 bis i
                 # Packe jedes Tripel von Floats in Binärdaten
-                packed_data += struct.pack('fff', x, y, z)
+                packed_data += struct.pack('<fffI', x, y, z, tstamp)
 
                 # Sende, wenn ein Chunk voll ist oder die Daten vollständig sind
                 if (i + 1) % chunk_size == 0 or (i + 1) == total_samples: 
                     # Länge des gepackten Chunks senden
-                    self.client_socket.send(struct.pack('I', len(packed_data)))
+                    self.client_socket.send(struct.pack('<I', len(packed_data)))
                     # Chunk-Daten senden
                     self.client_socket.sendall(packed_data)  
                     print(f"gesendet Länge : {len(packed_data)}")
@@ -188,14 +198,51 @@ class TCPClient(object):
             self.__accel_x.clear()
             self.__accel_y.clear()
             self.__accel_z.clear()
+            self.__timestamps.clear()
         
+        #Beschleunigungs- und Zeitstempel-arrays befüllen
         self.__accel_x.append(self.accel.x)
         self.__accel_y.append(self.accel.y)
         self.__accel_z.append(self.accel.z)
+        self.__timestamps.append(self.get_unix_timestamp()) #Umwandlung in Unix-Zeitstempel
+        
+        #print(self.get_unix_timestamp())
 
         self.iter += 1
 
-    
+    #---------------------------------------------- Zeitsynchronisation ------------------------------------------------------
+
+    def set_rtc_time(self):
+        """Synchronisieren RTC einmalig über NTP-Server"""
+        try:
+            ntptime.host = "pool.ntp.org"  
+            ntptime.settime()  # Zeit von NTP-Server holen und RTC setzen
+        except Exception as e:
+            print("Fehler bei NTP-Synchronisation:", e)
+            return
+
+        #Korrektur Zeitzone von UTC zur lokale Zeit (MEZ)
+        GMT_OFFSET = 3600  # MEZ = UTC+1
+        local_time = time.localtime(time.time() + GMT_OFFSET)  # Lokale Zeit berechnen
+
+
+        # RTC mit lokaler Zeit setzen (Jahr, Monat, Tag,Wochentag , Stunde, Minute, Sekunde, Mikrosekunden)
+        self.rtc.datetime((local_time[0], local_time[1], local_time[2], local_time[6], local_time[3], local_time[4], local_time[5], 0))
+        print(self.get_unix_timestamp())
+
+    def get_unix_timestamp(self):
+        """Berechnet den aktuellen UNIX-Zeitstempel aus der RTC."""
+        rtc_time = self.rtc.datetime()
+        
+        # **Manuelle Unix-Zeit-Berechnung**
+        unix_timestamp = (rtc_time[0] - 1970) * 31536000  # Jahre in Sekunden
+        unix_timestamp += (rtc_time[1] - 1) * 2678400    # Monate (vereinfachte Annahme: 31 Tage/Monat)
+        unix_timestamp += (rtc_time[2] - 1) * 86400      # Tage in Sekunden
+        unix_timestamp += rtc_time[4] * 3600             # Stunden in Sekunden
+        unix_timestamp += rtc_time[5] * 60               # Minuten in Sekunden
+        unix_timestamp += rtc_time[6]                    # Sekunden
+
+        return unix_timestamp
 
     #---------------------------------------------- Verbindung schließen ------------------------------------------------------
 
@@ -208,7 +255,3 @@ class TCPClient(object):
             pass
         self.connected = False
         print("Socket closed and timer stopped")
-
-
-
-

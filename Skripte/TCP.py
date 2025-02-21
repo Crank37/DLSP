@@ -25,6 +25,7 @@ class TCPServer_MDB(object):
         self.__ax = []
         self.__ay = []
         self.__az = []
+        self.__timestamp = []
 
         #Antrainieren des Modells
         self.label = ""
@@ -43,8 +44,6 @@ class TCPServer_MDB(object):
         self.label = label      #nur für manuelle Datenaufnahme
         self.sampletime = time
 
-        #self.set_time() #Zeit senden
-
         #Receivedata Funktion im zusätzlichen Thread ausführen, sodass die Benutzeroberfläche parallel funktioniert
         thread = threading.Thread(target=self.receivedata, daemon=True)
         thread.start()
@@ -57,55 +56,122 @@ class TCPServer_MDB(object):
         print("Verbindung geschlossen!")
 
     #---------------------------------------------- Nachricht an Client ------------------------------------------------------
+    
+    def set_time(self, conn):
+        """Sendet die eingegebene Zeit an den Client"""
 
-    def set_time(self):
-        self.server_socket.connect((self.host, self.port))
-        self.server_socket.send(self.sampletime.encode())
+        #falls Feld im GUI freigelassen wurde, automatisch auf 10 setzen
+        if self.sampletime == "":
+            self.sampletime = "10"
+        conn.send(self.sampletime.encode())
+
 
 
     #---------------------------------------------- Daten aufbereiten ------------------------------------------------------
 
-    #Daten Empfangen vom Client
     def receivedata(self):
-        #Verbindung herstellen
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen()
+            
+            #Verbindung herstellen
+            self.server_socket.bind((self.host, self.port))
+            self.server_socket.listen()
 
-        #Daten
+            #Daten
+            iter = 0
+            while self.running:
+                conn, addr = self.server_socket.accept() #blockiert weiteren Code, bis Client eine Verbindung mit server hergesetllt hat
+                
+                with conn:
+                    print(f"Verbunden mit der Adresse: {addr}")
+                    self.set_time(conn) #Zeit senden
+                    while self.running:
+
+                        ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
+
+                        try:
+                            # Gesamtlänge der Daten empfangen
+                            total_samples = struct.unpack('I', conn.recv(4))[0]
+
+                            # Daten in Chunks empfangen
+                            while len(self.__ax) < total_samples:
+                                # Länge des nächsten Chunks empfangen
+                                chunk_size = struct.unpack('I', conn.recv(4))[0]
+                                # Sicherstellen, dass der vollständige Chunk empfangen wird
+                                chunk_data = b''
+                                while len(chunk_data) < chunk_size:
+                                    chunk_data += conn.recv(chunk_size - len(chunk_data))
+                                print(f"Größe Empfangenen Teildaten: {len(chunk_data)}")
+
+                                # Entpacke die Float-Daten
+                                floats = struct.unpack(f'{chunk_size // 4}f', chunk_data)
+
+                                # Verteile die Daten auf die drei Listen
+                                for i in range(0, len(floats), 3):
+                                    self.__ax.append(floats[i])
+                                    self.__ay.append(floats[i + 1])
+                                    self.__az.append(floats[i + 2])
+                                
+                            if iter > 50:
+                                print("Verbindung geschlossen")
+                                self.running = False
+                                break
+                            print(f"Daten Nr. {iter} empfangen")
+
+                            self.getindb()
+
+                            iter += 1
+
+                        except (ConnectionResetError, BrokenPipeError):
+                            print("Verbindung verloren")
+                            break
+
+
+    #Daten Empfangen vom Client
+    def receivedata_test(self):
+        """Empfangen der Daten vom Client"""
+        #Daten 
         iter = 0
         while self.running:
             conn, addr = self.server_socket.accept() #blockiert weiteren Code, bis Client eine Verbindung mit server hergesetllt hat
             
             with conn:
                 print(f"Verbunden mit der Adresse: {addr}")
+                self.set_time(conn) #Zeit senden
                 while self.running:
 
                     ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
 
                     try:
                         # Gesamtlänge der Daten empfangen
-                        total_samples = struct.unpack('I', conn.recv(4))[0]
+                        total_samples = struct.unpack('<I', conn.recv(4))[0]
+                        print(total_samples)
 
                         # Daten in Chunks empfangen
                         while len(self.__ax) < total_samples:
                             # Länge des nächsten Chunks empfangen
-                            chunk_size = struct.unpack('I', conn.recv(4))[0]
+                            chunk_size = struct.unpack('<I', conn.recv(4))[0] #Größe in Byte
+                            chunk_samples = chunk_size // 16                      #Anzahl Teilmessungen(4Byte*4Werte = 16)
                             # Sicherstellen, dass der vollständige Chunk empfangen wird
                             chunk_data = b''
                             while len(chunk_data) < chunk_size:
                                 chunk_data += conn.recv(chunk_size - len(chunk_data))
                             print(f"Größe Empfangenen Teildaten: {len(chunk_data)}")
+                    
+                            float_size = chunk_samples * 3 * 4  # 3 Floats pro Sample (4 Byte pro Float)
+                            int_size = chunk_samples * 4        # 1 Int-Zeitstempel pro Sample (4 Byte)
 
-                            # Entpacke die Float-Daten
-                            floats = struct.unpack(f'{chunk_size // 4}f', chunk_data)
+                            # **Floats zuerst entpacken**
+                            float_values = struct.unpack(f"<{chunk_samples * 3}f", chunk_data[:float_size])
 
-                            # Verteile die Daten auf die drei Listen
-                            for i in range(0, len(floats), 3):
-                                self.__ax.append(floats[i])
-                                self.__ay.append(floats[i + 1])
-                                self.__az.append(floats[i + 2])
-                            
-                        if iter > 10:
+                            # **Dann die Zeitstempel separat entpacken**
+                            timestamp_values = struct.unpack(f"<{chunk_samples}I", chunk_data[float_size:float_size + int_size])
+
+                            # **Werte in Listen schreiben**
+                            self.__ax.extend(float_values[0::3])  # x-Werte
+                            self.__ay.extend(float_values[1::3])  # y-Werte
+                            self.__az.extend(float_values[2::3])  # z-Werte
+                            self.__timestamp.extend(timestamp_values)  # Zeitstempel 
+                                                   
+                        if iter > 50:
                             print("Verbindung geschlossen")
                             self.running = False
                             break
@@ -148,5 +214,8 @@ class TCPServer_MDB(object):
         self.__ax.clear()
         self.__ay.clear()
         self.__az.clear()
+
+        print("Durch")
+
 
     #---------------------------------------------- Debugging ------------------------------------------------------
