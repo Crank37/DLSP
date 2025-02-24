@@ -21,13 +21,15 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import StandardScaler
+import lightgbm as lgb
 
 
 #---------------------------------------------- Ab hier:  Funktionen aus Jupyter ------------------------------------------------------
 
 
 #Berechnung der FFT
-def calcFFT(accel):
+def calcFFT(accel, cutoff=45, fs=100):
     n = accel.size
     accel_without_mean = accel-np.mean(accel) #Subtract mean
     yfreq = np.fft.rfft(accel_without_mean,n,norm='ortho')
@@ -91,7 +93,7 @@ class Simulation(object):
         #Initialisierung MongoDB
         self.MDB_cloud_addr = MDB_cloud_addr
         self.dbinstance = dbinstance
-        self._Statustext = ""
+        self._Statustext = "Willkommen! \nWählen Sie eine Aktion aus!"
 
         #Initialisierung für FFT
         self.n_sample = 256
@@ -113,7 +115,9 @@ class Simulation(object):
         self.df["label"] = self.df["label"].astype(str)
 
         #Zyklus für Datenabfrage (Klassifikation nacheinander)
-        self.interval = 1
+        self.interval = 0.3
+        
+        self.bStop = False
 
 
     #---------------------------------------------- Simulation starten ------------------------------------------------------
@@ -142,6 +146,8 @@ class Simulation(object):
         #Aufteilung
         Xtest,ylabel = self.get_Xtest_ylabel()
 
+        scaler = StandardScaler()
+        X_test_scaled = scaler.fit_transform(Xtest)    
 
         while i < len(Xtest):
             current_time = time.perf_counter()
@@ -150,15 +156,17 @@ class Simulation(object):
                 last_time = current_time  # Zeitstempel aktualisieren
 
                 # Einzelne Zeile für Vorhersage nehmen
-                sample = Xtest.iloc[i].values.reshape(1, -1)
+                #sample = X_test_scaled.iloc[i].values.reshape(1, -1)
+                sample = X_test_scaled[i].reshape(1, -1)
                 prediction = self.model.predict(sample)[0]  # Vorhersage des Modells
+
 
                 if prediction == 1:
                     prediction = "Schleudern"
                 elif prediction == 2:
                     prediction = "Waschen"
                 elif prediction == 3:
-                    prediction = "Pumpvorgang"
+                    prediction = "Spülen"
                 else:
                     prediction = "Stillstand"
 
@@ -169,13 +177,23 @@ class Simulation(object):
                     counttrue += 1
 
 
-                self._Statustext = f"Klassifikation Nr. {i+1} von {len(Xtest)} \nVorhersage = {prediction} \nWahres Label = {true_label} \nRichtige Ergebnisse: {counttrue}"
+                self._Statustext = f"Simulation \n\nKlassifikation Nr. {i+1} von {len(Xtest)} \nVorhersage = {prediction} \nWahres Label = {true_label} \n\nRichtige Ergebnisse: {counttrue}"
 
                 i += 1
             
             # Weitere Logik hier, um die CPU-Auslastung gering zu halten
             time.sleep(0.01)  # Kleine Verzögerung für Effizienz
 
+            if self.bStop:
+                self.bStop = False
+                break
+
+    def stop(self):
+        self.bStop = True
+        self._Statustext = "Willkommen! \nWählen Sie eine Aktion aus!"
+
+        #Leeren des Dataframes
+        self.df.drop(self.df.index, inplace=True)
 
     #---------------------------------------------- Daten Aufbereitung ------------------------------------------------------
 

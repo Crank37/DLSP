@@ -75,7 +75,7 @@ class TCPServer_MDB(object):
 
     def receivedata(self):
             
-            self._Statustext = "Verbindung wird hergestellt ..."
+            self._Statustext = "Daten empfangen \n\nVerbindung wird hergestellt ... "
 
             #Verbindung herstellen
             self.server_socket.bind((self.host, self.port))
@@ -94,7 +94,7 @@ class TCPServer_MDB(object):
                         ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
 
                         try:
-                            self._Statustext = f"Verbunden mit: {addr[0]}\nEmpfangene Datenpakete {iter}"
+                            self._Statustext = f"Daten empfangen \n\nVerbunden mit: {addr[0]}\nEmpfangene Datenpakete {iter}"
 
                             # Gesamtlänge der Daten empfangen
                             total_samples = struct.unpack('I', conn.recv(4))[0]

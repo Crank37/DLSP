@@ -10,7 +10,7 @@ import urllib
 #0: Aus - Stillstand
 #1: Wasser Pumpvorgang (zu Beginn) und ggf. Heizvorgang (60° Wäsche)  -  Pumpvorgang
 #2: Hin und Her drehen zum Waschen (Wasser mit Waschüulver) bzw Einweichen   - Waschen
-#3: Abpumpen des Schmutzwassers + Zufügen neues Wasser zum Absülen  -  Spülen
+#3: Abpumpen des Schmutzwassers + Zufügen neues Wasser zum Abspülen  -  Spülen
 #4: Schleudervorgang - Schleudern
 
 
@@ -38,6 +38,7 @@ class ServerController(QObject):
 
         #Variable zum Umschalten Textfeld zwischen TCP und Simulation
         self.TCPActive = False
+        self.SimActive = False
 
         self.server = TCPServer_MDB(host, port)
 
@@ -58,14 +59,20 @@ class ServerController(QObject):
     def Receive_data(self, label: str, time: str):
         self.TCPActive = True
         #TCP Server starten
-        self.server.start(label=label, time=time)
+        if not self.SimActive:
+            self.server.start(label=label, time=time)
 
     def start_sim(self):
-        self.sim.start()
+        if not (self.SimActive and self.TCPActive):
+            self.sim.start()
+        self.SimActive = True
         
     def stop_server(self):
-        self.TCPActive = False
-        self.server.stop()
+        if self.TCPActive:
+            self.server.stop()
+            self.TCPActive = False
+        self.sim.stop()
+        self.SimActive = False
 
 
 #Benutzeroberfläche (Layout in Ui_MainWindow, erstellt mit Qt Designer)
@@ -104,7 +111,7 @@ if __name__ == "__main__":
     password = urllib.parse.quote_plus('mongo')
     srv_url = f'mongodb+srv://{username}:{password}@cluster21045.2xlz5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster21045' 
 
-    serverController = ServerController(host = "192.168.2.101", port = 53565, cloud=0, dbcloudurl=srv_url, dbinstance = "Messung2", MLModelname="Decision Tree_model.pkl")
+    serverController = ServerController(host = "192.168.2.107", port = 53565, cloud=1, dbcloudurl=srv_url, dbinstance = "Messung2", MLModelname="LightGBM_model.pkl")
 
     #Benutzeroberfläche starten
     window = MainWindow(serverController)
