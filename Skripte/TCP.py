@@ -94,8 +94,6 @@ class TCPServer_MDB(object):
                         ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
 
                         try:
-                            self._Statustext = f"Daten empfangen \n\nVerbunden mit: {addr[0]}\nEmpfangene Datenpakete {iter}"
-
                             # Gesamtlänge der Daten empfangen
                             total_samples = struct.unpack('I', conn.recv(4))[0]
 
@@ -117,7 +115,9 @@ class TCPServer_MDB(object):
                                     self.__ax.append(floats[i])
                                     self.__ay.append(floats[i + 1])
                                     self.__az.append(floats[i + 2])
-                                
+                            
+                            self._Statustext = f"Daten empfangen \n\nVerbunden mit: {addr[0]}\nEmpfangene Datenpakete {iter+1} \n\n{len(self.__ax+self.__ay+self.__az)} Werte von {3*256} erhalten!"
+     
                             if iter > 50:
                                 print("Verbindung geschlossen")
                                 self.running = False

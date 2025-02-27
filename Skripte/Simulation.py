@@ -24,19 +24,40 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 import lightgbm as lgb
 
+#Optionen
+#1: Trainingsdaten 23_02, Validierungsdaten 27_02
+#2: Trainingsdaten 23_02, Validierungsdaten 23_02_128 (Hier wurden Werte H)
+
+
 
 #---------------------------------------------- Ab hier:  Funktionen aus Jupyter ------------------------------------------------------
 
 
 #Berechnung der FFT
-def calcFFT(accel, cutoff=45, fs=100):
+"""def calcFFT(accel, cutoff=35, fs=100):
     n = accel.size
     accel_without_mean = accel-np.mean(accel) #Subtract mean
     yfreq = np.fft.rfft(accel_without_mean,n,norm='ortho')
     yfreq = np.abs(yfreq)
     yfreq[0]=0.0 #Suppress DC Offset
     yfreq = yfreq/n
+    return yfreq"""
+
+def calcFFT(accel, cutoff=45, fss = 100):
+    n = accel.size
+    freq = np.fft.rfftfreq(n, d=1/fss)  # Frequenzachse berechnen
+
+    accel_without_mean = accel-np.mean(accel) #Subtract mean
+    yfreq = np.fft.rfft(accel_without_mean,n,norm='ortho')
+
+    # Tiefpassfilter anwenden (hohe Frequenzen entfernen)
+    yfreq[freq > cutoff] = 0
+    
+    yfreq = np.abs(yfreq)
+    yfreq[0]=0.0 #Suppress DC Offset
+    yfreq = yfreq/n
     return yfreq
+
 
 def calcAGes(ax,ay,az):
     return np.sqrt(ax*ax+ay*ay+az*az)
@@ -126,7 +147,7 @@ class Simulation(object):
     def start(self):
         """Startet den TCP-Server in einem separaten Thread."""
 
-        self._Statustext = "Simulation gestartet"
+        self._Statustext = "Simulation startet ..."
 
         self.running = True
 

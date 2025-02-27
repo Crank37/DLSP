@@ -92,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # Timer zur regelmäßigen Aktualisierung des Status
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_status)
-        self.timer.start(500)  
+        self.timer.start(300)  
 
     def update_status(self):
         """Aktualisiert den Status-Text regelmäßig"""
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     password = urllib.parse.quote_plus('mongo')
     srv_url = f'mongodb+srv://{username}:{password}@cluster21045.2xlz5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster21045' 
 
-    serverController = ServerController(host = "192.168.2.107", port = 53565, cloud=1, dbcloudurl=srv_url, dbinstance = "Messung2", MLModelname="LightGBM_model.pkl")
+    serverController = ServerController(host = "192.168.2.107", port = 53565, cloud=1, dbcloudurl=srv_url, dbinstance = "Messung27_02", MLModelname="LightGBM_model2.pkl")
 
     #Benutzeroberfläche starten
     window = MainWindow(serverController)
