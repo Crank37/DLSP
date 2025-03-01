@@ -32,18 +32,8 @@ import lightgbm as lgb
 
 #---------------------------------------------- Ab hier:  Funktionen aus Jupyter ------------------------------------------------------
 
-
-#Berechnung der FFT
-"""def calcFFT(accel, cutoff=35, fs=100):
-    n = accel.size
-    accel_without_mean = accel-np.mean(accel) #Subtract mean
-    yfreq = np.fft.rfft(accel_without_mean,n,norm='ortho')
-    yfreq = np.abs(yfreq)
-    yfreq[0]=0.0 #Suppress DC Offset
-    yfreq = yfreq/n
-    return yfreq"""
-
-def calcFFT(accel, cutoff=45, fss = 100):
+#Funktion zur Druchführung FFT mit Tiefpassfilter
+def calcFFT(accel, cutoff=50, fss = 100):
     n = accel.size
     freq = np.fft.rfftfreq(n, d=1/fss)  # Frequenzachse berechnen
 
@@ -122,13 +112,12 @@ class Simulation(object):
         self.fs = 100 # Hz
         self.period = 1/self.fs
 
-        self.StartSample = 0
+        end_freq = self.fs/2      #fs:Nyquist 50Hz
 
-        end_time = 256.0*self.period 
-        end_freq = self.fs/2.0       #fs:100Hz
+        self.xf=np.linspace(0,int(end_freq),int(self.n_sample/2))
 
-        xt=np.linspace(0.0,end_time,256)
-        xf=np.linspace(0.0,end_freq,128)
+        #Für Matplotlib Widget
+        self.values = []
 
         #Leeres Format für df erzeugen
         self.df = pd.DataFrame(columns=range(int(self.n_sample/2)))
@@ -136,7 +125,7 @@ class Simulation(object):
         self.df["label"] = self.df["label"].astype(str)
 
         #Zyklus für Datenabfrage (Klassifikation nacheinander)
-        self.interval = 0.3
+        self.interval = 0.5
         
         self.bStop = False
 
@@ -172,6 +161,9 @@ class Simulation(object):
 
         while i < len(Xtest):
             current_time = time.perf_counter()
+
+            #Für Plotten auf der GUI
+            self.values = Xtest.iloc[i,0 :128].values.tolist() 
             
             if current_time - last_time >= self.interval:
                 last_time = current_time  # Zeitstempel aktualisieren
@@ -216,6 +208,7 @@ class Simulation(object):
         #Leeren des Dataframes
         self.df.drop(self.df.index, inplace=True)
 
+
     #---------------------------------------------- Daten Aufbereitung ------------------------------------------------------
 
     def get_Xtest_ylabel(self):
@@ -243,3 +236,7 @@ class Simulation(object):
     def get_statustext(self):
         """Getter-Methode für Statustext"""
         return self._Statustext
+    
+    def get_values_formatplotlib(self):
+        """Getter-Methode für Statustext"""
+        return self.xf, self.values

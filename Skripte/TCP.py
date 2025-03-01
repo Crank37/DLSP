@@ -197,12 +197,14 @@ class TCPServer_MDB(object):
 
     #DB Instanz erstellen oder aufrufen
     def create_opendb(self, dbinstance = "Acceleration",MDB_clientaddr_port = "localhost:27017", MDB_cloud_addr = "", cloud = 0):
+        #Erzeugung Verbindung lokale DB
         self.cloud = cloud
-        self.MD_local = MongoClient(MDB_clientaddr_port)
-        self.db_local = self.MD_local[dbinstance]
+        if self.cloud == 0 or self.cloud == 2:
+            self.MD_local = MongoClient(MDB_clientaddr_port)
+            self.db_local = self.MD_local[dbinstance]
 
         #Erzeugung Verbindung zum Cloud
-        if self.cloud == 1:
+        if self.cloud == 1 or self.cloud == 2:
             self.MD_Cloud = MongoClient(MDB_cloud_addr, tlsCAFile=certifi.where())
             self.db_cloud = self.MD_Cloud[dbinstance]
 
