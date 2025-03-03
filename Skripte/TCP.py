@@ -132,67 +132,6 @@ class TCPServer_MDB(object):
                             print("Verbindung verloren")
                             break
 
-
-    #Daten Empfangen vom Client
-    def receivedata_test(self):
-        """Empfangen der Daten vom Client"""
-        #Daten 
-        iter = 0
-        while self.running:
-            conn, addr = self.server_socket.accept() #blockiert weiteren Code, bis Client eine Verbindung mit server hergesetllt hat
-            
-            with conn:
-                print(f"Verbunden mit der Adresse: {addr}")
-                self.set_time(conn) #Zeit senden
-                while self.running:
-
-                    ### Zur Übersichtlichkeit: Ab hier werden Daten empfangen und aufbereitet! ###
-
-                    try:
-                        # Gesamtlänge der Daten empfangen
-                        total_samples = struct.unpack('<I', conn.recv(4))[0]
-                        print(total_samples)
-
-                        # Daten in Chunks empfangen
-                        while len(self.__ax) < total_samples:
-                            # Länge des nächsten Chunks empfangen
-                            chunk_size = struct.unpack('<I', conn.recv(4))[0] #Größe in Byte
-                            chunk_samples = chunk_size // 16                      #Anzahl Teilmessungen(4Byte*4Werte = 16)
-                            # Sicherstellen, dass der vollständige Chunk empfangen wird
-                            chunk_data = b''
-                            while len(chunk_data) < chunk_size:
-                                chunk_data += conn.recv(chunk_size - len(chunk_data))
-                            print(f"Größe Empfangenen Teildaten: {len(chunk_data)}")
-                    
-                            float_size = chunk_samples * 3 * 4  # 3 Floats pro Sample (4 Byte pro Float)
-                            int_size = chunk_samples * 4        # 1 Int-Zeitstempel pro Sample (4 Byte)
-
-                            # **Floats zuerst entpacken**
-                            float_values = struct.unpack(f"<{chunk_samples * 3}f", chunk_data[:float_size])
-
-                            # **Dann die Zeitstempel separat entpacken**
-                            timestamp_values = struct.unpack(f"<{chunk_samples}I", chunk_data[float_size:float_size + int_size])
-
-                            # **Werte in Listen schreiben**
-                            self.__ax.extend(float_values[0::3])  # x-Werte
-                            self.__ay.extend(float_values[1::3])  # y-Werte
-                            self.__az.extend(float_values[2::3])  # z-Werte
-                            self.__timestamp.extend(timestamp_values)  # Zeitstempel 
-                                                   
-                        if iter > 50:
-                            print("Verbindung geschlossen")
-                            self.running = False
-                            break
-                        print(f"Daten Nr. {iter} empfangen")
-
-                        self.getindb()
-
-                        iter += 1
-
-                    except (ConnectionResetError, BrokenPipeError):
-                        print("Verbindung verloren")
-                        break
-
     #---------------------------------------------- Laden Daten in Mongo DB ------------------------------------------------------
 
     #DB Instanz erstellen oder aufrufen
@@ -215,9 +154,10 @@ class TCPServer_MDB(object):
         #Packt jedes Element rein als Dictionary
         array = [{'ax': self.__ax, 'ay': self.__ay, 'az': self.__az, "label":self.label}]
 
-        self.db_local.Accelerations.insert_many(array)
+        if self.cloud == 0 or self.cloud == 2:
+            self.db_local.Accelerations.insert_many(array)
         
-        if self.cloud == 1:
+        if self.cloud == 1 or self.cloud == 2:
             self.db_cloud.Accelerations.insert_many(array)
 
         #arrays leeren

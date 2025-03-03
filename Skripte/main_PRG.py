@@ -1,25 +1,26 @@
 import sys
-from PySide6.QtCore import Signal, QObject, QTimer,  QMetaObject, Qt
+from PySide6.QtCore import Signal, QObject, QTimer
 from PySide6 import  QtWidgets
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
-from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QVBoxLayout
 from GUI_from_Designer import Ui_Datenerfassung
 from TCP import TCPServer_MDB
 from Simulation import Simulation
 import urllib 
-import numpy as np
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 
 #Zustände
 #0: Aus - Stillstand
-#1: Wasser Pumpvorgang (zu Beginn) und ggf. Heizvorgang (60° Wäsche)  -  Pumpvorgang
 #2: Hin und Her drehen zum Waschen (Wasser mit Waschüulver) bzw Einweichen   - Waschen
 #3: Abpumpen des Schmutzwassers + Zufügen neues Wasser zum Abspülen  -  Spülen
 #4: Schleudervorgang - Schleudern
+#i: Spülen mit Schleudern (große Schwingungen durch hohe Unwuchten)  -  Spülschleudern
 
 #pyside6-uic Benutzeroberflaeche.ui -o GUI_from_Designer.py 
+
+#Spülen
+#Spülschleudern
 
 #---------------------------------------------- Instanz mit TCP und Simulationsklasse ------------------------------------------------------
 
@@ -175,7 +176,7 @@ if __name__ == "__main__":
     password = urllib.parse.quote_plus('mongo')
     srv_url = f'mongodb+srv://{username}:{password}@cluster21045.2xlz5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster21045' 
 
-    serverController = ServerController(host = "192.168.2.107", port = 53565, cloud=1, dbcloudurl=srv_url, dbinstance = "Messung27_02", MLModelname="LightGBM_model2.pkl")
+    serverController = ServerController(host = "xxx", port = 51233, cloud=2, dbcloudurl=srv_url, dbinstance = "Messung23_02", MLModelname="Random_Forest_model.pkl")
 
     #Benutzeroberfläche starten
     window = MainWindow(serverController)

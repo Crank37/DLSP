@@ -20,7 +20,7 @@ class TCPClient(object):
     """
 
     #Initialisierung des Client Sockets und Timers
-    def __init__(self, host = "127.0.0.1", port = 12345, ssid = "abc", pw = "abc"):
+    def __init__(self, host = "127.0.0.1", port = 12345, ssid = "abc", pw = "abc", samplemode = 0):
         #Netwerk
         self.host = host
         self.port = port
@@ -41,6 +41,7 @@ class TCPClient(object):
         #Timer
         self.tim = Timer(-1)
         self.sampletime = 10 #ms
+        self.samplemode = samplemode
 
         #TCP Socket
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,7 +79,7 @@ class TCPClient(object):
     #---------------------------------------------- Nachricht ------------------------------------------------------
 
     #periodisches Triggern nachricht
-    def message_timer(self, mode = 1):
+    def message_timer(self):
         """
         
         sampletime in ms und mode 0 (128) oder 1 (256) Werte (je beschlunigungsachse) in einem Datenpaket zum versenden
@@ -86,12 +87,11 @@ class TCPClient(object):
         """
 
         #Abfangen richtiger Moduswert
-        if mode < 0 or mode > 1:
-            raise ValueError(f"Ungültiger Wert: {mode}.")
-        self.mode = mode
+        if self.samplemode < 0 or self.samplemode > 1:
+            raise ValueError(f"Ungültiger Wert: {self.samplemode}.")
 
         #Anzahl Werte limitieren für ein Datenpaket
-        if self.mode == 0:
+        if self.samplemode == 0:
             self.limit = 128
         else:
             self.limit = 256
@@ -161,56 +161,7 @@ class TCPClient(object):
 
             self.iter += 1
 
-    #noch nicht funktionsfähig
-    def data_int_test(self):
-        """Datenpakete werden strukturiert verschickt (Informationen an den Codekommentaren bzw aus Dokumentation entnehmen!)"""
-
-        #If-Block zum Senden, falls Array voll
-        if self.iter >= self.limit:
-
-            print(f"AX {self.__accel_x[:5]} \n AY {self.__accel_y[:5]} \n AZ {self.__accel_z[:5]} \n time {self.__timestamps[:10]}")
-
-
-            chunk_size = self.limit // 4
-            packed_data = b''
-            print(f"Länge der Listen x {len(self.__accel_x)}, y {len(self.__accel_y)}, z{len(self.__accel_z)}, Zeit{len(self.__timestamps)} ")
-            combined_data = zip(self.__accel_x, self.__accel_y, self.__accel_z, self.__timestamps)
-
-            # Gesamtlänge der Daten
-            total_samples = self.limit
-            self.client_socket.send(struct.pack('<I', total_samples))  # Gesamtlänge der Daten senden
-
-            for i, (x, y, z, tstamp) in enumerate(combined_data): #0 bis i
-                # Packe jedes Tripel von Floats in Binärdaten
-                packed_data += struct.pack('<fffI', x, y, z, tstamp)
-
-                # Sende, wenn ein Chunk voll ist oder die Daten vollständig sind
-                if (i + 1) % chunk_size == 0 or (i + 1) == total_samples: 
-                    # Länge des gepackten Chunks senden
-                    self.client_socket.send(struct.pack('<I', len(packed_data)))
-                    # Chunk-Daten senden
-                    self.client_socket.sendall(packed_data)  
-                    print(f"gesendet Länge : {len(packed_data)}")
-
-                    packed_data = b''
-
-            self.iter = 0
-            self.__accel_x.clear()
-            self.__accel_y.clear()
-            self.__accel_z.clear()
-            self.__timestamps.clear()
-        
-        #Beschleunigungs- und Zeitstempel-arrays befüllen
-        self.__accel_x.append(self.accel.x)
-        self.__accel_y.append(self.accel.y)
-        self.__accel_z.append(self.accel.z)
-        self.__timestamps.append(self.get_unix_timestamp()) #Umwandlung in Unix-Zeitstempel
-        
-        #print(self.get_unix_timestamp())
-
-        self.iter += 1
-
-    #---------------------------------------------- Zeitsynchronisation ------------------------------------------------------
+    #---------------------------------------------- Zeitsynchronisation [Verworfen] ------------------------------------------------------
 
     def set_rtc_time(self):
         """Synchronisieren RTC einmalig über NTP-Server"""
