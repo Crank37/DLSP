@@ -15,7 +15,7 @@ class TCPClient(object):
 
     """
     
-    Klasse mit Initialisierungargumenten (host_id, port, Netzwerk_ssid, Netzwerk_Passwort)
+    Klasse mit Initialisierungargumenten (host_id, port, Netzwerk_ssid, Netzwerk_Passwort, samplemode)
     
     """
 

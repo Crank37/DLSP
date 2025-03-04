@@ -17,11 +17,6 @@ import matplotlib.pyplot as plt
 #4: Schleudervorgang - Schleudern
 #i: Spülen mit Schleudern (große Schwingungen durch hohe Unwuchten)  -  Spülschleudern
 
-#pyside6-uic Benutzeroberflaeche.ui -o GUI_from_Designer.py 
-
-#Spülen
-#Spülschleudern
-
 #---------------------------------------------- Instanz mit TCP und Simulationsklasse ------------------------------------------------------
 
 #Klasse zur Kopplung Elemente aus Benutzeroberfläche mit TCPServer_MDB Klasse (Start,Stopp Server)
@@ -30,12 +25,16 @@ class ServerController(QObject):
     host, port: IP-Adresse und Port, worüber der TCP Server läuft
     cloud: 0 lokal, 1 nur cloud, 2 cloud und lokal
     dbcloudurl: URL des Servers
+    dbinstance: Name DB (Gilt für das Hochladen Daten und für Abrufen (Simulation))
+    MLModelname: Name des ML-Models (Im selben Pfad)
+    simspeed: Simulationsgeschwindigkeit Zyklus in s
+
     """
 
     # Signal zur Kommunikation mit der GUI
     message_received = Signal(str)
 
-    def __init__(self, host, port, cloud, dbcloudurl, dbinstance, MLModelname):
+    def __init__(self, host, port, cloud, dbcloudurl, dbinstance, MLModelname, simspeed):
         super().__init__()
 
         #Variable zum Umschalten Textfeld zwischen TCP und Simulation
@@ -45,7 +44,7 @@ class ServerController(QObject):
         self.server = TCPServer_MDB(host, port)
 
         #Simulation mit Klassifikiation
-        self.sim = Simulation(MLModelname, dbcloudurl, dbinstance)
+        self.sim = Simulation(MLModelname, dbcloudurl, dbinstance, simspeed)
 
         #Verbindung zu Mongo DB herstellen und Datenbank erzeugen 
         self.server.create_opendb(dbinstance, MDB_clientaddr_port="localhost:27017", MDB_cloud_addr=dbcloudurl, cloud=cloud)
@@ -77,11 +76,11 @@ class ServerController(QObject):
             self.server.start(label=label, time=time)
 
     def start_sim(self):
-        if not (self.SimActive and self.TCPActive):
+        if not (self.SimActive or self.TCPActive):
             self.sim.start()
         self.SimActive = True
         
-    def stop_server(self):
+    def stop_sim_server(self):
         if self.TCPActive:
             self.server.stop()
             self.TCPActive = False
@@ -98,9 +97,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_Datenerfassung):
 
         self.server_controller = server_controller
 
+        #Funktionen Triggern
         self.bRecData.clicked.connect(lambda: self.server_controller.Receive_data(self.tLabel.text(), str(self.tSampletime.text())))
 
-        self.bStop.clicked.connect(lambda: self.server_controller.stop_server())
+        self.bStop.clicked.connect(lambda: self.server_controller.stop_sim_server())
 
         self.bSim.clicked.connect(lambda: self.server_controller.start_sim())
 
@@ -176,10 +176,10 @@ if __name__ == "__main__":
     password = urllib.parse.quote_plus('mongo')
     srv_url = f'mongodb+srv://{username}:{password}@cluster21045.2xlz5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster21045' 
 
-    serverController = ServerController(host = "xxx", port = 51233, cloud=2, dbcloudurl=srv_url, dbinstance = "Messung23_02", MLModelname="Random_Forest_model.pkl")
+    serverController = ServerController(host = "xxx", port = 53565, cloud=2, dbcloudurl=srv_url, dbinstance = "Messung01_03", MLModelname="LightGBM_model.pkl", simspeed = 0.5)
 
     #Benutzeroberfläche starten
     window = MainWindow(serverController)
     window.show()
-    sys.exit(app.exec())
+    sys.exit(app.execs())
 

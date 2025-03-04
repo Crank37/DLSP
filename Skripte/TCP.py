@@ -45,7 +45,7 @@ class TCPServer_MDB(object):
 
         self.running = True
         self.label = label      #nur für manuelle Datenaufnahme
-        self.sampletime = time
+        self.sampletime = time  #Abtastrate über GUI
 
         #Receivedata Funktion im zusätzlichen Thread ausführen, sodass die Benutzeroberfläche parallel funktioniert
         thread = threading.Thread(target=self.receivedata, daemon=True)

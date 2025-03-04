@@ -4,7 +4,7 @@ import gc
 if __name__ == "__main__":
     print("Frei verfügbarer Speicher:", gc.mem_free())  
 
-    client = TCPClient(host = "xxxx", port = xxx, ssid='xxx', pw='xxx', samplemode = 1)
+    client = TCPClient(host = "xxx", port = 53565, ssid='xxx', pw='xxx', samplemode = 1)
     client.connect_to_wifi()
     client.connect()
     client.get_time()
