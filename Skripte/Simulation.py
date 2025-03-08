@@ -1,10 +1,8 @@
 import joblib
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import certifi
 from pymongo import MongoClient
-from bson.objectid import ObjectId
 import threading
 import time
 
@@ -13,27 +11,14 @@ import time
 from bson.json_util import dumps
 from bson.json_util import loads
 
-from sklearn.model_selection import train_test_split,cross_val_score
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
-from sklearn.neural_network import MLPClassifier
-from sklearn.svm import SVC
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 import lightgbm as lgb
-
-#Optionen
-#1: Trainingsdaten 23_02, Validierungsdaten 27_02
-#2: Trainingsdaten 23_02, Validierungsdaten 23_02_128 (Hier wurden Werte H)
-
 
 
 #---------------------------------------------- Ab hier:  Funktionen aus Jupyter ------------------------------------------------------
 
 #Funktion zur Druchführung FFT mit Tiefpassfilter
-def calcFFT(accel, cutoff=50, fss = 100):
+def calcFFT(accel, cutoff=40, fss = 100):
     n = accel.size
     freq = np.fft.rfftfreq(n, d=1/fss)  # Frequenzachse berechnen
 
@@ -42,7 +27,7 @@ def calcFFT(accel, cutoff=50, fss = 100):
 
     # Tiefpassfilter anwenden (hohe Frequenzen entfernen)
     yfreq[freq > cutoff] = 0
-    
+
     yfreq = np.abs(yfreq)
     yfreq[0]=0.0 #Suppress DC Offset
     yfreq = yfreq/n
@@ -67,6 +52,8 @@ def create_df_Ages(df, obj, n):
     #BSON in JSON umwandeln
     dictionary = dumps(obj)
     objs = loads(dictionary)
+
+    df["label"] = df["label"].astype(str)
 
 
     #Durchiterieren Objekte
@@ -97,7 +84,7 @@ class Simulation(object):
     
     """
 
-    def __init__(self, modelname, MDB_cloud_addr, dbinstance):
+    def __init__(self, modelname, MDB_cloud_addr, dbinstance, simspeed):
         #Klassifikator laden
         self.model = joblib.load(modelname)  # Laden des gespeicherten Modells
 
@@ -122,10 +109,10 @@ class Simulation(object):
         #Leeres Format für df erzeugen
         self.df = pd.DataFrame(columns=range(int(self.n_sample/2)))
         self.df['label'] = 0
-        self.df["label"] = self.df["label"].astype(str)
+        #self.df["label"] = self.df["label"].astype(str)
 
         #Zyklus für Datenabfrage (Klassifikation nacheinander)
-        self.interval = 0.5
+        self.interval = simspeed
         
         self.bStop = False
 
@@ -150,14 +137,28 @@ class Simulation(object):
 
         last_time = time.perf_counter()  # Startzeitpunkt erfassen
 
-        i = 0
-        counttrue = 0
-
         #Aufteilung
         Xtest,ylabel = self.get_Xtest_ylabel()
 
         scaler = StandardScaler()
         X_test_scaled = scaler.fit_transform(Xtest)    
+
+        #Itereation mit Zählung tatsächliche Werte
+        i = 0
+        counttrue = 0
+
+        count0 = 0  #Stillstand richtig klazzifiziert zählen
+        count1 = 0  #Schleudern richtig klazzifiziert zählen
+        count2 = 0  #Waschen richtig klazzifiziert zählen
+        count3 = 0  #Spülen richtig klazzifiziert zählen
+
+        sum0 = (ylabel == "Stillstand").sum()
+        sum1 = (ylabel == "Schleudern").sum()
+        sum2 = (ylabel == "Waschen").sum()
+        sum3 = (ylabel == "Spülen").sum()
+
+        listeloeschen = [0]
+
 
         while i < len(Xtest):
             current_time = time.perf_counter()
@@ -173,6 +174,8 @@ class Simulation(object):
                 sample = X_test_scaled[i].reshape(1, -1)
                 prediction = self.model.predict(sample)[0]  # Vorhersage des Modells
 
+        
+
 
                 if prediction == 1:
                     prediction = "Schleudern"
@@ -186,20 +189,43 @@ class Simulation(object):
                 # Vergleich mit dem echten Label
                 true_label = ylabel[i]
 
+                #Zählen richtige Klassifikationen
                 if true_label == prediction:
                     counttrue += 1
 
+                    if true_label == "Stillstand":
+                        count0 += 1
+                    elif true_label == "Schleudern":
+                        count1 += 1
+                    elif true_label == "Waschen":
+                        count2 += 1
+                    else:
+                        count3 += 1 
+                else:
+                    listeloeschen.append(i+1)
 
-                self._Statustext = f"Simulation \n\nKlassifikation Nr. {i+1} von {len(Xtest)} \nVorhersage = {prediction} \nWahres Label = {true_label} \n\nRichtige Ergebnisse: {counttrue}"
+                self._Statustext = f"Simulation - {self.dbinstance}  \n\nKlassifikation Nr. {i+1} von {len(Xtest)} \nVorhersage = {prediction} \nWahres Label = {true_label} \n\nRichtige Ergebnisse: {counttrue}"
 
+                if i == len(Xtest)-1:
+                    self._Statustext = (
+                        f"Simulation - Resultat {self.dbinstance}\n\n"
+                        f"Stillstand: {count0} von {sum0} richtig\n"
+                        f"Schleudern: {count1} von {sum1} richtig\n"
+                        f"Waschen:    {count2} von {sum2} richtig\n"
+                        f"Spülen:     {count3} von {sum3} richtig\n"
+                        f"Insgesamt:  {counttrue} von {len(Xtest)} richtig!"
+                        )
+                    print(listeloeschen)
                 i += 1
-            
+
+
             # Weitere Logik hier, um die CPU-Auslastung gering zu halten
             time.sleep(0.01)  # Kleine Verzögerung für Effizienz
 
             if self.bStop:
                 self.bStop = False
                 break
+
 
     def stop(self):
         self.bStop = True

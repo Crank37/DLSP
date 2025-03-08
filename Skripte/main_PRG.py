@@ -1,25 +1,21 @@
 import sys
-from PySide6.QtCore import Signal, QObject, QTimer,  QMetaObject, Qt
+from PySide6.QtCore import Signal, QObject, QTimer
 from PySide6 import  QtWidgets
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
-from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QVBoxLayout
 from GUI_from_Designer import Ui_Datenerfassung
 from TCP import TCPServer_MDB
 from Simulation import Simulation
 import urllib 
-import numpy as np
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 
 #Zustände
 #0: Aus - Stillstand
-#1: Wasser Pumpvorgang (zu Beginn) und ggf. Heizvorgang (60° Wäsche)  -  Pumpvorgang
 #2: Hin und Her drehen zum Waschen (Wasser mit Waschüulver) bzw Einweichen   - Waschen
 #3: Abpumpen des Schmutzwassers + Zufügen neues Wasser zum Abspülen  -  Spülen
 #4: Schleudervorgang - Schleudern
-
-#pyside6-uic Benutzeroberflaeche.ui -o GUI_from_Designer.py 
+#i: Spülen mit Schleudern (große Schwingungen durch hohe Unwuchten)  -  Spülschleudern
 
 #---------------------------------------------- Instanz mit TCP und Simulationsklasse ------------------------------------------------------
 
@@ -29,12 +25,16 @@ class ServerController(QObject):
     host, port: IP-Adresse und Port, worüber der TCP Server läuft
     cloud: 0 lokal, 1 nur cloud, 2 cloud und lokal
     dbcloudurl: URL des Servers
+    dbinstance: Name DB (Gilt für das Hochladen Daten und für Abrufen (Simulation))
+    MLModelname: Name des ML-Models (Im selben Pfad)
+    simspeed: Simulationsgeschwindigkeit Zyklus in s
+
     """
 
     # Signal zur Kommunikation mit der GUI
     message_received = Signal(str)
 
-    def __init__(self, host, port, cloud, dbcloudurl, dbinstance, MLModelname):
+    def __init__(self, host, port, cloud, dbcloudurl, dbinstance, MLModelname, simspeed):
         super().__init__()
 
         #Variable zum Umschalten Textfeld zwischen TCP und Simulation
@@ -44,7 +44,7 @@ class ServerController(QObject):
         self.server = TCPServer_MDB(host, port)
 
         #Simulation mit Klassifikiation
-        self.sim = Simulation(MLModelname, dbcloudurl, dbinstance)
+        self.sim = Simulation(MLModelname, dbcloudurl, dbinstance, simspeed)
 
         #Verbindung zu Mongo DB herstellen und Datenbank erzeugen 
         self.server.create_opendb(dbinstance, MDB_clientaddr_port="localhost:27017", MDB_cloud_addr=dbcloudurl, cloud=cloud)
@@ -76,11 +76,11 @@ class ServerController(QObject):
             self.server.start(label=label, time=time)
 
     def start_sim(self):
-        if not (self.SimActive and self.TCPActive):
+        if not (self.SimActive or self.TCPActive):
             self.sim.start()
         self.SimActive = True
         
-    def stop_server(self):
+    def stop_sim_server(self):
         if self.TCPActive:
             self.server.stop()
             self.TCPActive = False
@@ -97,9 +97,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_Datenerfassung):
 
         self.server_controller = server_controller
 
+        #Funktionen Triggern
         self.bRecData.clicked.connect(lambda: self.server_controller.Receive_data(self.tLabel.text(), str(self.tSampletime.text())))
 
-        self.bStop.clicked.connect(lambda: self.server_controller.stop_server())
+        self.bStop.clicked.connect(lambda: self.server_controller.stop_sim_server())
 
         self.bSim.clicked.connect(lambda: self.server_controller.start_sim())
 
@@ -175,10 +176,10 @@ if __name__ == "__main__":
     password = urllib.parse.quote_plus('mongo')
     srv_url = f'mongodb+srv://{username}:{password}@cluster21045.2xlz5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster21045' 
 
-    serverController = ServerController(host = "192.168.2.107", port = 53565, cloud=1, dbcloudurl=srv_url, dbinstance = "Messung27_02", MLModelname="LightGBM_model2.pkl")
+    serverController = ServerController(host = "xxx", port = 53565, cloud=2, dbcloudurl=srv_url, dbinstance = "Messung01_03", MLModelname="LightGBM_model.pkl", simspeed = 0.5)
 
     #Benutzeroberfläche starten
     window = MainWindow(serverController)
     window.show()
-    sys.exit(app.exec())
+    sys.exit(app.execs())
 
